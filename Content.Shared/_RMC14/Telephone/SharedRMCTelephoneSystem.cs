@@ -67,6 +67,7 @@ public abstract class SharedRMCTelephoneSystem : EntitySystem
             {
                 subs.Event<RMCTelephoneCallBuiMsg>(OnTelephoneCallMsg);
                 subs.Event<RMCTelephoneDndBuiMsg>(OnTelephoneDndMsg);
+                subs.Event<RMCTelephoneBlockBuiMsg>(OnTelephoneBlockMsg); // SSCM edit
             });
     }
 
@@ -218,6 +219,16 @@ public abstract class SharedRMCTelephoneSystem : EntitySystem
             return;
 
         var user = args.Actor;
+
+        // SSCM start
+        var callerNetEnt = GetNetEntity(ent.Owner);
+        if (targetRotaryPhone.BlockedPhones.Contains(callerNetEnt))
+        {
+            _popup.PopupEntity("That phone is not accepting calls right now!", user, user, PopupType.MediumCaution);
+            return;
+        }
+        // SSCM end
+
         if (IsPhoneBusy(target))
         {
             _popup.PopupEntity("That phone is busy!", user, user, PopupType.MediumCaution);
@@ -239,6 +250,17 @@ public abstract class SharedRMCTelephoneSystem : EntitySystem
         {
             _popup.PopupEntity($"{marineMeta.EntityName} dials a number on the {phoneMeta.EntityName}.", ent);
         }
+
+        // SSCM start
+        var callerName = GetPhoneName((ent, ent.Comp));
+        var callerMeta = MetaData(user);
+        var timeStr = DateTime.UtcNow.ToString("HH:mm");
+        var logEntry = new RMCCallLogEntry(callerName, null, callerMeta.EntityName, timeStr);
+        targetRotaryPhone.CallLog.Insert(0, logEntry);
+        if (targetRotaryPhone.CallLog.Count > targetRotaryPhone.MaxCallLogSize)
+            targetRotaryPhone.CallLog.RemoveAt(targetRotaryPhone.CallLog.Count - 1);
+        Dirty(target, targetRotaryPhone);
+        // SSCM end
 
         ent.Comp.Idle = false;
         ent.Comp.LastCall = time;
@@ -297,6 +319,22 @@ public abstract class SharedRMCTelephoneSystem : EntitySystem
         }
         SendUIState(ent);
     }
+
+    // SSCM start
+    private void OnTelephoneBlockMsg(Entity<RotaryPhoneComponent> ent, ref RMCTelephoneBlockBuiMsg args)
+    {
+        if (_net.IsClient)
+            return;
+
+        if (args.Block)
+            ent.Comp.BlockedPhones.Add(args.Id);
+        else
+            ent.Comp.BlockedPhones.Remove(args.Id);
+
+        Dirty(ent);
+        SendUIState(ent.Owner);
+    }
+    // SSCM end
 
     private bool IsPhoneBusy(EntityUid ent)
     {
@@ -516,10 +554,14 @@ public abstract class SharedRMCTelephoneSystem : EntitySystem
             var name = GetPhoneName((otherId, otherComp));
             phones.Add(new RMCPhone(GetNetEntity(otherId), otherComp.Category, name));
         }
-        var canDnd = Comp<RotaryPhoneComponent>(phone).CanDnd;
+        var phoneComp = Comp<RotaryPhoneComponent>(phone);
+        var canDnd = phoneComp.CanDnd;
         var dnd = HasComp<RotaryPhoneDndComponent>(phone);
-
-        _ui.SetUiState(phone, RMCTelephoneUiKey.Key, new RMCTelephoneBuiState(phones, canDnd, dnd));
+        // SSCM start
+        var callLog = new List<RMCCallLogEntry>(phoneComp.CallLog);
+        var blockedPhones = new List<NetEntity>(phoneComp.BlockedPhones);
+        _ui.SetUiState(phone, RMCTelephoneUiKey.Key, new RMCTelephoneBuiState(phones, canDnd, dnd, callLog, blockedPhones));
+        // SSCM end
     }
 
     private void PickupReceiving(Entity<RotaryPhoneReceivingComponent> receiving, EntityUid user)

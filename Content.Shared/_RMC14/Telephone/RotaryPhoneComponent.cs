@@ -16,6 +16,17 @@ public sealed partial class RotaryPhoneComponent : Component
     [DataField, AutoNetworkedField]
     public bool CanDnd;
 
+    // SSCM start
+    [DataField, AutoNetworkedField]
+    public List<RMCCallLogEntry> CallLog = new();
+
+    [DataField, AutoNetworkedField]
+    public int MaxCallLogSize = 20;
+
+    [DataField, AutoNetworkedField]
+    public HashSet<NetEntity> BlockedPhones = new();
+    // SSCM end
+
     [DataField, AutoNetworkedField]
     public SoundSpecifier? DialingSound = new SoundPathSpecifier("/Audio/_RMC14/Phone/dial.ogg", AudioParams.Default.WithVolume(-3));
 
